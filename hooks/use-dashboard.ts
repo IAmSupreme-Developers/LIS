@@ -1,5 +1,6 @@
 import { useCallback, useEffect, useState } from 'react'
 import { api } from '@/lib/api'
+import { getSubjects, LocalSubject } from '@/lib/offline-cache'
 
 interface DNAProfile {
   is_ready: boolean
@@ -7,32 +8,36 @@ interface DNAProfile {
   optimal_hour_start: number | null
   optimal_hour_end: number | null
   avg_attention_span_mins: number
-  weak_area_flags: { topic: { name: string }; accuracy_score: number }[]
-}
-
-interface Subject {
-  id: string
-  name: string
-  code: string
+  weak_area_flags: { section: { name: string }; accuracy_score: number }[]
 }
 
 export function useDashboard(formLevelId: string) {
   const [dna, setDna] = useState<DNAProfile | null>(null)
-  const [subjects, setSubjects] = useState<Subject[]>([])
+  const [subjects, setSubjects] = useState<LocalSubject[]>([])
   const [loading, setLoading] = useState(true)
+  const [offline, setOffline] = useState(false)
 
   const load = useCallback(async () => {
-    const [dnaRes, subjectsRes] = await Promise.allSettled([
-      api.get<{ dna: DNAProfile | null }>('/api/v1/dna'),
-      api.get<{ subjects: Subject[] }>(`/api/v1/curriculum/subjects?form_level_id=${formLevelId}`),
-    ])
-    if (dnaRes.status === 'fulfilled') setDna(dnaRes.value.dna)
-    if (subjectsRes.status === 'fulfilled') setSubjects(subjectsRes.value.subjects ?? [])
+    if (!formLevelId) return
+
+    // DNA — API only (no offline cache needed, just skip if unavailable)
+    api.get<{ dna: DNAProfile | null }>('/api/v1/dna')
+      .then(d => setDna(d.dna))
+      .catch(() => {}) // silent fail
+
+    // Subjects — API first, SQLite fallback
+    try {
+      const result = await getSubjects(formLevelId)
+      setSubjects(result)
+      setOffline(false)
+    } catch {
+      setOffline(true)
+    }
   }, [formLevelId])
 
   useEffect(() => {
     load().finally(() => setLoading(false))
   }, [load])
 
-  return { dna, subjects, loading, reload: load }
+  return { dna, subjects, loading, offline, reload: load }
 }

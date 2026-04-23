@@ -1,11 +1,23 @@
 import { useEffect } from 'react'
+import { AppState } from 'react-native'
 import { Stack, router, useSegments } from 'expo-router'
 import { StatusBar } from 'expo-status-bar'
 import { AuthProvider, useAuth } from '@/lib/auth-store'
+import { syncPendingData } from '@/lib/sync-queue'
 
 function AuthGate() {
   const { user, profile, isLoading } = useAuth()
   const segments = useSegments()
+
+  // Sync pending data when app comes to foreground
+  useEffect(() => {
+    const sub = AppState.addEventListener('change', state => {
+      if (state === 'active') {
+        syncPendingData().catch(() => {})
+      }
+    })
+    return () => sub.remove()
+  }, [])
 
   useEffect(() => {
     if (isLoading) return

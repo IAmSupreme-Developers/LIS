@@ -8,6 +8,7 @@ interface ContentItem {
   type: string
   title: string
   body: string | null
+  section_id?: string
   quiz_questions?: {
     id: string
     question_text: string
@@ -56,15 +57,14 @@ export function useSession(subjectId: string) {
 
       setSession(data.session)
 
-      // Load content — don't fail the whole session if one item fails
+      // Load content — use offline cache (API first, SQLite fallback)
       const map: Record<string, ContentItem> = {}
       await Promise.allSettled(
         data.session.session_items.map(async item => {
           try {
-            const res = await api.get<{ topic: { subtopics: { content_items: ContentItem[] }[] } }>(
-              `/api/v1/content/topic/${item.content_item_id}`
-            )
-            res.topic.subtopics.flatMap(s => s.content_items).forEach(ci => { map[ci.id] = ci })
+            const { getContentItem } = await import('@/lib/offline-cache')
+            const ci = await getContentItem(item.content_item_id)
+            if (ci) map[ci.id] = ci as ContentItem
           } catch (e) {
             console.warn(`Failed to load content item ${item.content_item_id}:`, e)
           }
@@ -87,6 +87,7 @@ export function useSession(subjectId: string) {
 
   function recordEvent(type: string, extra?: object) {
     events.current.push({
+      id: Math.random().toString(36).slice(2) + Date.now().toString(36), // simple unique id
       event_type: type,
       session_id: session?.id,
       occurred_at: new Date().toISOString(),
@@ -101,7 +102,7 @@ export function useSession(subjectId: string) {
     if (session) {
       const duration = Math.round((Date.now() - startTime.current) / 1000)
       try {
-        await api.post('/api/v1/session/end', {
+        const res = await api.post<{ session_summary: object }>('/api/v1/session/end', {
           session_id: session.id,
           ended_at: new Date().toISOString(),
           completed,
@@ -110,9 +111,13 @@ export function useSession(subjectId: string) {
         if (events.current.length > 0) {
           await api.post('/api/v1/behavior/events', { events: events.current })
         }
+        // Navigate to summary screen on completion, back on exit
+        if (completed) {
+          router.replace({ pathname: '/(app)/session-summary', params: { summary: JSON.stringify(res.session_summary) } })
+          return
+        }
       } catch (e) {
         console.warn('Failed to sync session end:', e)
-        // Don't block navigation on sync failure
       }
     }
 
@@ -152,6 +157,7 @@ export function useSession(subjectId: string) {
   return {
     loading,
     error,
+    sessionId: session?.id ?? null,
     items,
     currentIndex,
     currentItem,

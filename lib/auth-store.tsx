@@ -1,5 +1,5 @@
 import * as SecureStore from 'expo-secure-store'
-import { api } from './api'
+import { api, setAuthFailureHandler } from './api'
 import { createContext, useContext, useEffect, useState, ReactNode } from 'react'
 
 interface Profile {
@@ -25,6 +25,7 @@ interface AuthState {
   login: (email: string, password: string) => Promise<void>
   register: (data: RegisterData) => Promise<{ requires_parental_setup: boolean }>
   parentalSetup: (parent_name: string, passcode: string) => Promise<void>
+  refreshProfile: () => Promise<void>
   logout: () => Promise<void>
 }
 
@@ -46,6 +47,16 @@ export function AuthProvider({ children }: { children: ReactNode }) {
   const [isLoading, setIsLoading] = useState(true)
 
   useEffect(() => {
+    // When token refresh fails, auto-logout
+    setAuthFailureHandler(async () => {
+      await SecureStore.deleteItemAsync('access_token')
+      await SecureStore.deleteItemAsync('refresh_token')
+      await SecureStore.deleteItemAsync('lis_user')
+      await SecureStore.deleteItemAsync('lis_profile')
+      setUser(null)
+      setProfile(null)
+    })
+
     // Restore session on app start
     ;(async () => {
       try {
@@ -108,6 +119,14 @@ export function AuthProvider({ children }: { children: ReactNode }) {
     }
   }
 
+  async function refreshProfile() {
+    try {
+      const res = await api.get<{ profile: Profile }>('/api/v1/auth/me')
+      await SecureStore.setItemAsync('lis_profile', JSON.stringify(res.profile))
+      setProfile(res.profile)
+    } catch {}
+  }
+
   async function logout() {
     await SecureStore.deleteItemAsync('access_token')
     await SecureStore.deleteItemAsync('refresh_token')
@@ -118,7 +137,7 @@ export function AuthProvider({ children }: { children: ReactNode }) {
   }
 
   return (
-    <AuthContext.Provider value={{ user, profile, isLoading, login, register, parentalSetup, logout }}>
+    <AuthContext.Provider value={{ user, profile, isLoading, login, register, parentalSetup, refreshProfile, logout }}>
       {children}
     </AuthContext.Provider>
   )

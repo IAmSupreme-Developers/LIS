@@ -2,6 +2,10 @@ import * as SecureStore from 'expo-secure-store'
 
 const BASE_URL = process.env.EXPO_PUBLIC_API_URL ?? 'http://127.0.0.1:3000'
 
+// Called when all token refresh attempts fail — set by AuthProvider
+let onAuthFailure: (() => void) | null = null
+export function setAuthFailureHandler(fn: () => void) { onAuthFailure = fn }
+
 async function getToken(): Promise<string | null> {
   try {
     return await SecureStore.getItemAsync('access_token')
@@ -59,9 +63,10 @@ async function request<T>(path: string, options: RequestInit = {}, skipAuth = fa
       if (!retry.ok) throw await retry.json()
       return retry.json()
     }
+    // Refresh failed — clear tokens and redirect to login
+    onAuthFailure?.()
     throw { error: { code: 'UNAUTHORIZED' } }
   }
-
   if (!res.ok) throw await res.json()
   return res.json()
 }
