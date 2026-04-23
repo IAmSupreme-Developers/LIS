@@ -20,7 +20,8 @@
         "jsEngine": "hermes"
       },
       "edgeToEdgeEnabled": true,
-      "predictiveBackGestureEnabled": false
+      "predictiveBackGestureEnabled": false,
+      "package": "com.iamsupreme.LIS"
     },
     "web": {
       "output": "static",
@@ -46,6 +47,12 @@
     "experiments": {
       "typedRoutes": true,
       "reactCompiler": true
+    },
+    "extra": {
+      "router": {},
+      "eas": {
+        "projectId": "c01071c5-87f9-4f14-973e-22630d1e1fc0"
+      }
     }
   }
 }
